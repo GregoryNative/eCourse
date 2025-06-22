@@ -12,7 +12,7 @@ RUN unzip /tmp/pb.zip -d /eCourse/pb
 
 WORKDIR /eCourse/ui
 
-RUN sed -i 's/^VITE_PROD_PB_URL=.*/VITE_PROD_PB_URL=http:\/\/127.0.0.1:8090/' .env
+RUN sed -i 's/^VITE_PROD_PB_URL=.*/VITE_PROD_PB_URL=http:\/\/192.168.68.51:8090/' .env
 RUN npm install
 RUN npm run build
 RUN mv dist/* /eCourse/pb/pb_public
