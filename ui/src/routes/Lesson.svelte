@@ -1,5 +1,5 @@
 <script>
-  import { onMount, afterUpdate, tick } from "svelte";
+  import { onMount, afterUpdate, tick, onDestroy } from "svelte";
   import { slide } from "svelte/transition";
   import { quintOut } from "svelte/easing";
   import {
@@ -7,11 +7,15 @@
     lessons,
     courses,
     progress,
+    lessonProgress,
     lesson_faqs,
     lesson_resources,
     currentUser,
     fetchRecords,
     updateProgressStatus,
+    saveLessonProgress,
+    getLessonProgress,
+    markLessonCompleted,
   } from "../lib/pocketbase";
   import { cleanFileName } from "../lib/strConverter";
   import { navigate, useLocation } from "svelte-routing";
@@ -33,8 +37,12 @@
 
   let loading = {};
   let lessonVideo;
+  let youtubePlayer;
   let currentCourseStatus = "";
   let currentLessonTitle = "";
+  let currentLessonProgress = null;
+  let progressSaveInterval;
+  let youtubeProgressInterval;
 
   const lessonLocation = useLocation();
 
@@ -43,12 +51,75 @@
       $isLoading = true;
       await fetchRecords();
       $isLoading = false;
+      
+      if (window.YT && window.YT.Player) {
+        initializeYouTubeAPI();
+      } else {
+        loadYouTubeAPI();
+      }
     } else {
       navigate("/login");
     }
   });
 
+  onDestroy(() => {
+    if (progressSaveInterval) {
+      clearInterval(progressSaveInterval);
+    }
+    if (youtubeProgressInterval) {
+      clearInterval(youtubeProgressInterval);
+    }
+  });
+
+  function loadYouTubeAPI() {
+    if (!window.YT) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+      
+      window.onYouTubeIframeAPIReady = initializeYouTubeAPI;
+    }
+  }
+
+  function initializeYouTubeAPI() {
+    // YouTube API is ready, we'll initialize players when needed
+  }
+
   afterUpdate(() => {
+    initializeVideoPlayers();
+  });
+
+  async function initializeVideoPlayers() {
+    const currentLesson = $lessons.find(
+      (lesson) =>
+        slugify(lesson.title, { lower: true, strict: true }) ===
+        slugify(lessonTitle, { lower: true, strict: true }),
+    );
+
+    if (!currentLesson) return;
+
+    currentLessonProgress = $lessonProgress.find(
+      p => p.lesson === currentLesson.id
+    );
+
+    if (currentLesson.video) {
+      initializeLocalVideo(currentLesson);
+    }
+
+    if (currentLesson.videoLocal) {
+      initializeLocalVideoFromPath(currentLesson);
+    }
+
+    if (currentLesson.videoRemoteUrl && getYouTubeVideoId(currentLesson.videoRemoteUrl)) {
+      initializeYouTubeVideo(currentLesson);
+    }
+  }
+
+  function initializeLocalVideo(lesson) {
+    const videoElement = document.getElementById("lessonVideo");
+    if (!videoElement || lessonVideo) return;
+
     lessonVideo = new Plyr("#lessonVideo", {
       invertTime: false,
       toggleInvert: false,
@@ -57,7 +128,111 @@
         update: true,
       },
     });
-  });
+
+    setupVideoProgressTracking(lessonVideo, lesson, "local");
+  }
+
+  function initializeLocalVideoFromPath(lesson) {
+    const videoElement = document.getElementById("lessonVideoLocal");
+    if (!videoElement) return;
+
+    const localVideo = new Plyr("#lessonVideoLocal", {
+      invertTime: false,
+      toggleInvert: false,
+      captions: {
+        active: true,
+        update: true,
+      },
+    });
+
+    setupVideoProgressTracking(localVideo, lesson, "local");
+  }
+
+  function initializeYouTubeVideo(lesson) {
+    const youtubeContainer = document.getElementById("youtube-player");
+    if (!youtubeContainer || !window.YT || youtubePlayer) return;
+
+    const videoId = getYouTubeVideoId(lesson.videoRemoteUrl);
+    
+    youtubePlayer = new window.YT.Player('youtube-player', {
+      height: '100%',
+      width: '100%',
+      videoId: videoId,
+      playerVars: {
+        'rel': 0,
+        'modestbranding': 1,
+        'playsinline': 1
+      },
+      events: {
+        'onReady': (event) => setupYouTubeProgressTracking(event.target, lesson),
+        'onStateChange': (event) => handleYouTubeStateChange(event, lesson)
+      }
+    });
+  }
+
+  function setupVideoProgressTracking(player, lesson, videoType) {
+    const progressData = $lessonProgress.find(p => p.lesson === lesson.id);
+    
+    player.on('loadedmetadata', () => {
+      if (progressData && progressData.currentTime > 0) {
+        player.currentTime = progressData.currentTime;
+        showAlert(`Resumed from ${formatTime(progressData.currentTime)}`, "info");
+      }
+    });
+
+    player.on('timeupdate', () => {
+      const currentTime = player.currentTime;
+      const duration = player.duration;
+      
+      if (duration > 0) {
+        saveLessonProgress(lesson.id, currentTime, duration, videoType, false);
+      }
+    });
+
+    player.on('ended', () => {
+      markLessonCompleted(lesson.id, videoType);
+      showAlert("Lesson completed!", "success");
+    });
+  }
+
+  function setupYouTubeProgressTracking(player, lesson) {
+    const progressData = $lessonProgress.find(p => p.lesson === lesson.id);
+    
+    if (progressData && progressData.currentTime > 0) {
+      player.seekTo(progressData.currentTime, true);
+      showAlert(`Resumed from ${formatTime(progressData.currentTime)}`, "info");
+    }
+
+    youtubeProgressInterval = setInterval(() => {
+      if (player.getPlayerState() === window.YT.PlayerState.PLAYING) {
+        const currentTime = player.getCurrentTime();
+        const duration = player.getDuration();
+        
+        if (duration > 0) {
+          saveLessonProgress(lesson.id, currentTime, duration, "youtube", false);
+        }
+      }
+    }, 5000);
+  }
+
+  function handleYouTubeStateChange(event, lesson) {
+    if (event.data === window.YT.PlayerState.ENDED) {
+      markLessonCompleted(lesson.id, "youtube");
+      showAlert("Lesson completed!", "success");
+    }
+  }
+
+  function formatTime(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  }
+
+  function getProgressPercentage(lessonId) {
+    const progressData = $lessonProgress.find(p => p.lesson === lessonId);
+    if (!progressData || !progressData.duration) return 0;
+    return (progressData.currentTime / progressData.duration) * 100;
+  }
 
   // find the current course status
   $: {
@@ -335,13 +510,13 @@
                   />
                 </video>
               {/if}
-              <p>videoLocal: {lesson.videoLocal}</p>
+
               {#if lesson.videoLocal}
                  <video
                    controls
                    crossorigin
                    playsinline
-                   id="lessonVideo"
+                   id="lessonVideoLocal"
                    data-poster={pb.files.getUrl(lesson, lesson.thumbnail)}
                  >
                    <source src={`${window.location.origin}${lesson.videoLocal}`} />
@@ -355,17 +530,9 @@
                  </video>
               {/if}
 
-              <p>videoRemoteUrl: {lesson.videoRemoteUrl}</p>
               {#if lesson.videoRemoteUrl && getYouTubeVideoId(lesson.videoRemoteUrl)}
                 <div class="relative aspect-video w-full overflow-hidden rounded-md">
-                  <iframe
-                    src={`https://www.youtube.com/embed/${getYouTubeVideoId(lesson.videoRemoteUrl)}?rel=0&modestbranding=1`}
-                    title="YouTube video player"
-                    frameborder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    allowfullscreen
-                    class="absolute inset-0 h-full w-full"
-                  ></iframe>
+                  <div id="youtube-player" class="absolute inset-0 h-full w-full"></div>
                 </div>
               {/if}
 
