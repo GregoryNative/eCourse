@@ -325,6 +325,25 @@
                   />
                 </video>
               {/if}
+              <p>videoLocal: {lesson.videoLocal}</p>
+              {#if lesson.videoLocal}
+                 <video
+                   controls
+                   crossorigin
+                   playsinline
+                   id="lessonVideo"
+                   data-poster={pb.files.getUrl(lesson, lesson.thumbnail)}
+                 >
+                   <source src={`${window.location.origin}${lesson.videoLocal}`} />
+                   <track
+                     kind="captions"
+                     label="English captions"
+                     src={pb.files.getUrl(lesson, lesson.captions)}
+                     srclang="en"
+                     default
+                   />
+                 </video>
+               {/if}
 
               {#if lesson.content}
                 <div

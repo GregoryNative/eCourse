@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  ecourse:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PB_VERSION: 0.21.3
+        ECOURSE_REPO: https://github.com/GregoryNative/eCourse.git
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./pb/pb_data:/eCourse/pb/pb_data
+      - ./pb/pb_migrations:/eCourse/pb/pb_migrations
+      - ./pb/pb_hooks:/eCourse/pb/pb_hooks
+      - ./videos:/eCourse/pb/pb_public/videos
+    environment:
+      - VITE_PROD_PB_URL=http://127.0.0.1:8090
+    user: "1000:1000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+ 
