@@ -191,6 +191,16 @@
       }
     }
   }
+
+  // function to extract YouTube video ID from URL
+  function getYouTubeVideoId(url) {
+    if (!url) return null;
+    
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    
+    return (match && match[2].length === 11) ? match[2] : null;
+  }
 </script>
 
 <Title title={currentLessonTitle} />
@@ -343,7 +353,21 @@
                      default
                    />
                  </video>
-               {/if}
+              {/if}
+
+              <p>videoRemoteUrl: {lesson.videoRemoteUrl}</p>
+              {#if lesson.videoRemoteUrl && getYouTubeVideoId(lesson.videoRemoteUrl)}
+                <div class="relative aspect-video w-full overflow-hidden rounded-md">
+                  <iframe
+                    src={`https://www.youtube.com/embed/${getYouTubeVideoId(lesson.videoRemoteUrl)}?rel=0&modestbranding=1`}
+                    title="YouTube video player"
+                    frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowfullscreen
+                    class="absolute inset-0 h-full w-full"
+                  ></iframe>
+                </div>
+              {/if}
 
               {#if lesson.content}
                 <div
