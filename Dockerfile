@@ -3,6 +3,7 @@ FROM node:20.11.1-buster
 WORKDIR /
 
 ARG ECOURSE_REPO=https://github.com/Ilyas-Codes/eCourse.git
+RUN rm -rf eCourse
 RUN git clone ${ECOURSE_REPO} eCourse
 
 ARG PB_VERSION=0.21.3
