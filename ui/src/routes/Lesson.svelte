@@ -201,6 +201,33 @@
     
     return (match && match[2].length === 11) ? match[2] : null;
   }
+
+  // function to extract Google Drive file ID from URL
+  function getGoogleDriveFileId(url) {
+    if (!url) return null;
+    
+    // Handle different Google Drive URL formats
+    const patterns = [
+      /\/file\/d\/([a-zA-Z0-9_-]+)/,
+      /[?&]id=([a-zA-Z0-9_-]+)/,
+      /\/open\?id=([a-zA-Z0-9_-]+)/
+    ];
+    
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+    
+    return null;
+  }
+
+  // function to check if URL is from Google Drive
+  function isGoogleDriveUrl(url) {
+    if (!url) return false;
+    return url.includes('drive.google.com');
+  }
 </script>
 
 <Title title={currentLessonTitle} />
@@ -356,17 +383,38 @@
               {/if}
 
               <p>videoRemoteUrl: {lesson.videoRemoteUrl}</p>
-              {#if lesson.videoRemoteUrl && getYouTubeVideoId(lesson.videoRemoteUrl)}
-                <div class="relative aspect-video w-full overflow-hidden rounded-md">
-                  <iframe
-                    src={`https://www.youtube.com/embed/${getYouTubeVideoId(lesson.videoRemoteUrl)}?rel=0&modestbranding=1`}
-                    title="YouTube video player"
-                    frameborder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    allowfullscreen
-                    class="absolute inset-0 h-full w-full"
-                  ></iframe>
-                </div>
+              {#if lesson.videoRemoteUrl}
+                {#if getYouTubeVideoId(lesson.videoRemoteUrl)}
+                  <div class="relative aspect-video w-full overflow-hidden rounded-md">
+                    <iframe
+                      src={`https://www.youtube.com/embed/${getYouTubeVideoId(lesson.videoRemoteUrl)}?rel=0&modestbranding=1`}
+                      title="YouTube video player"
+                      frameborder="0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      allowfullscreen
+                      class="absolute inset-0 h-full w-full"
+                    ></iframe>
+                  </div>
+                {:else if isGoogleDriveUrl(lesson.videoRemoteUrl) && getGoogleDriveFileId(lesson.videoRemoteUrl)}
+                  <div class="relative aspect-video w-full overflow-hidden rounded-md">
+                    <iframe
+                      src={`https://drive.google.com/file/d/${getGoogleDriveFileId(lesson.videoRemoteUrl)}/preview`}
+                      title="Google Drive video player"
+                      frameborder="0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      allowfullscreen
+                      class="absolute inset-0 h-full w-full"
+                    ></iframe>
+                  </div>
+                {:else}
+                  <div class="flex items-center justify-center rounded-md bg-white/5 p-8">
+                    <div class="text-center">
+                      <Icon class="mx-auto mb-2 text-4xl text-white/30" icon="ph:warning" />
+                      <p class="text-white/50">Unsupported video URL format</p>
+                      <p class="text-sm text-white/30">Only YouTube and Google Drive URLs are supported</p>
+                    </div>
+                  </div>
+                {/if}
               {/if}
 
               {#if lesson.content}
